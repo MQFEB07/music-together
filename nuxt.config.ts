@@ -62,6 +62,7 @@ export default defineNuxtConfig({
       routes: ['/'],
       ignore: ['/hi'],
     },
+    preset: 'netlify',
   },
   vite: {
     server: {

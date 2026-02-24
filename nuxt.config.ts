@@ -66,7 +66,7 @@ export default defineNuxtConfig({
   },
   vite: {
     server: {
-      allowedHosts: ['ac76-14-248-80-24.ngrok-free.app'],
+      allowedHosts: ['devserver-main--playful-crostata-dbd6f6.netlify.app'],
     },
   },
 

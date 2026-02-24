@@ -17,7 +17,8 @@ const emit = defineEmits<{
 const playerContainer = ref<HTMLElement | null>(null)
 let player: any = null
 let isReady = false
-let ignoreNextStateChange = false
+let isSystemAction = false
+let syncInterval: any = null
 
 const { load } = useScriptTag('https://www.youtube.com/iframe_api', () => {
   // The API is loaded, but we need to wait for YT.Player to be available
@@ -53,18 +54,22 @@ function initPlayer() {
 function onPlayerReady(_event: any) {
   isReady = true
   if (props.videoId) {
+    isSystemAction = true
     if (props.isPlaying) {
       player.playVideo()
     }
     const timeDiff = (Date.now() - props.updatedAt) / 1000
     const targetTime = props.currentTime + (props.isPlaying ? timeDiff : 0)
     player.seekTo(targetTime, true)
+
+    setTimeout(() => {
+      isSystemAction = false
+    }, 500)
   }
 }
 
 function onPlayerStateChange(event: any) {
-  if (ignoreNextStateChange) {
-    ignoreNextStateChange = false
+  if (isSystemAction) {
     return
   }
 
@@ -84,22 +89,35 @@ function onPlayerStateChange(event: any) {
 
 watch(() => props.videoId, (newId) => {
   if (isReady && player && newId) {
-    ignoreNextStateChange = true
+    isSystemAction = true
     player.loadVideoById(newId)
     if (!props.isPlaying) {
       player.pauseVideo()
     }
+    setTimeout(() => {
+      isSystemAction = false
+    }, 500)
   }
 })
 
 watch(() => props.isPlaying, (playing) => {
   if (isReady && player) {
-    ignoreNextStateChange = true
-    if (playing) {
-      player.playVideo()
-    }
-    else {
-      player.pauseVideo()
+    // Only react if the player's actual state is different from the prop
+    const playerState = player.getPlayerState()
+    const YT = window.YT
+    const isActuallyPlaying = playerState === YT.PlayerState.PLAYING || playerState === YT.PlayerState.BUFFERING
+
+    if (playing !== isActuallyPlaying) {
+      isSystemAction = true
+      if (playing) {
+        player.playVideo()
+      }
+      else {
+        player.pauseVideo()
+      }
+      setTimeout(() => {
+        isSystemAction = false
+      }, 500)
     }
   }
 })
@@ -107,18 +125,47 @@ watch(() => props.isPlaying, (playing) => {
 watch(() => props.currentTime, (time) => {
   if (isReady && player) {
     const current = player.getCurrentTime()
-    if (Math.abs(current - time) > 2) {
-      ignoreNextStateChange = true
-      player.seekTo(time, true)
+    // Calculate expected time based on when the state was updated
+    const timeDiff = props.isPlaying ? (Date.now() - props.updatedAt) / 1000 : 0
+    const expectedTime = time + timeDiff
+
+    // Tolerance threshold: 2 seconds
+    if (Math.abs(current - expectedTime) > 2) {
+      isSystemAction = true
+      player.seekTo(expectedTime, true)
+      setTimeout(() => {
+        isSystemAction = false
+      }, 500)
     }
   }
 })
 
 onMounted(() => {
   load()
+
+  // Periodically check if we are out of sync (e.g. due to buffering)
+  syncInterval = setInterval(() => {
+    if (isReady && player && props.isPlaying) {
+      const current = player.getCurrentTime()
+      const timeDiff = (Date.now() - props.updatedAt) / 1000
+      const expectedTime = props.currentTime + timeDiff
+
+      // If we drift more than 3 seconds while playing, force a sync
+      if (Math.abs(current - expectedTime) > 3 && !isSystemAction) {
+        isSystemAction = true
+        player.seekTo(expectedTime, true)
+        setTimeout(() => {
+          isSystemAction = false
+        }, 500)
+      }
+    }
+  }, 5000)
 })
 
 onUnmounted(() => {
+  if (syncInterval) {
+    clearInterval(syncInterval)
+  }
   if (player) {
     player.destroy()
   }

@@ -90,7 +90,7 @@ async function addToPlaylist(video: Video) {
   })
 
   if (response && !response.success && response.message) {
-    alert(response.message)
+    // alert(response.message)
   }
   else {
     searchResults.value = []
@@ -172,10 +172,13 @@ function formatDuration(ms: number) {
             <div class="i-carbon-music text-primary-500" />
             Music Together
           </h1>
-          <NuxtLink to="/stats" class="px-4 py-2 rounded-lg bg-gray-200 flex gap-2 transition-colors items-center dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700">
-            <div class="i-carbon-chart-bar" />
-            Stats
-          </NuxtLink>
+          <div class="flex gap-4 items-center">
+            <DarkToggle class="text-2xl text-gray-600 transition-colors dark:text-gray-300 hover:text-primary-500" />
+            <NuxtLink to="/stats" class="px-4 py-2 rounded-lg bg-gray-200 flex gap-2 transition-colors items-center dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700">
+              <div class="i-carbon-chart-bar" />
+              Stats
+            </NuxtLink>
+          </div>
         </div>
 
         <!-- Player -->

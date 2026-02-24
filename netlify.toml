@@ -1,19 +1,9 @@
 [build]
-publish = "dist"
+publish = ".output/public"
 command = "pnpm run build"
 
 [functions]
-directory = ".netlify/functions"
+directory = ".output/server"
 
 [build.environment]
 NODE_VERSION = "20"
-
-[[redirects]]
-from = "/api/*"
-to = "/.netlify/functions/server"
-status = 200
-
-[[redirects]]
-from = "/*"
-to = "/index.html"
-status = 200

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { useFetch } from '#app'
-import { onMounted, onUnmounted, ref } from 'vue'
+import { useCookie, useFetch } from '#app'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import YouTubePlayer from '~/components/YouTubePlayer.vue'
 import { useSupabase } from '~/utils/supabase'
 
@@ -19,7 +19,11 @@ const searchQuery = ref('')
 const searchResults = ref<Video[]>([])
 const isSearching = ref(false)
 
-const currentVideoId = ref<string | null>(null)
+const userName = useCookie<string>('music-together-username', { default: () => `Guest-${Math.floor(Math.random() * 10000)}` })
+const currentVideoId = useCookie<string | null>('music-together-current-video', { default: () => null })
+const isLooping = ref(false)
+
+const activeUsers = ref<{ [key: string]: { userName: string, videoId: string | null } }>({})
 
 const state = ref<AppState>({
   playlist: [],
@@ -27,24 +31,57 @@ const state = ref<AppState>({
 
 let channel: any = null
 let supabaseClient: any = null
+let isSubscribed = false
+const clientId = Math.random().toString(36).substring(2, 15)
+
+const { data: initialState } = await useFetch<AppState>('/api/state')
+if (initialState.value) {
+  state.value = initialState.value
+  if (state.value && state.value.playlist && state.value.playlist.length > 0) {
+    // Only set to first video if currentVideoId is null or not in playlist
+    const exists = state.value.playlist.some(v => v.id === currentVideoId.value)
+    if (!exists) {
+      currentVideoId.value = state.value.playlist[0]!.id
+    }
+  }
+}
+
+watch([userName, currentVideoId], async () => {
+  if (channel && isSubscribed) {
+    await channel.track({ userName: userName.value, videoId: currentVideoId.value })
+  }
+})
 
 onMounted(async () => {
-  // Fetch initial state
-  const { data } = await useFetch<AppState>('/api/state')
-  if (data.value) {
-    state.value = data.value
-  }
-
   // Initialize Supabase Realtime
   supabaseClient = useSupabase()
   if (supabaseClient) {
-    channel = supabaseClient.channel('room:default')
+    channel = supabaseClient.channel('room:default', {
+      config: {
+        presence: {
+          key: clientId,
+        },
+      },
+    })
 
     channel
+      .on('presence', { event: 'sync' }, () => {
+        const newState = channel.presenceState()
+        const users: any = {}
+        for (const id in newState) {
+          users[id] = newState[id][0]
+        }
+        activeUsers.value = users
+      })
       .on('broadcast', { event: 'state-update' }, (payload: any) => {
         state.value = payload.payload
       })
-      .subscribe()
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          isSubscribed = true
+          await channel.track({ userName: userName.value, videoId: currentVideoId.value })
+        }
+      })
   }
 })
 
@@ -72,6 +109,8 @@ async function search() {
 }
 
 async function addToPlaylist(video: Video) {
+  const isFirstVideo = state.value.playlist.length === 0
+
   const response = await $fetch<{ success: boolean, message?: string }>('/api/playlist', {
     method: 'POST',
     body: { video },
@@ -83,6 +122,11 @@ async function addToPlaylist(video: Video) {
   else {
     searchResults.value = []
     searchQuery.value = ''
+
+    // If it was the first video added, play it immediately
+    if (isFirstVideo) {
+      playVideo(video.id)
+    }
   }
 }
 
@@ -104,6 +148,9 @@ async function playVideo(id: string) {
 }
 
 async function onVideoEnded() {
+  if (!state.value || !state.value.playlist)
+    return
+
   // Play next video in playlist
   const currentIndex = state.value.playlist.findIndex(v => v.id === currentVideoId.value)
   if (currentIndex !== -1 && currentIndex < state.value.playlist.length - 1) {
@@ -111,6 +158,10 @@ async function onVideoEnded() {
     if (nextVideo) {
       playVideo(nextVideo.id)
     }
+  }
+  else if (isLooping.value && state.value.playlist.length > 0) {
+    // Loop back to the first video
+    playVideo(state.value.playlist[0]!.id)
   }
   else {
     // Stop playback
@@ -124,6 +175,10 @@ function formatDuration(ms: number) {
   const seconds = totalSeconds % 60
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
+
+function getUsersForVideo(id: string) {
+  return Object.values(activeUsers.value).filter(u => u.videoId === id)
+}
 </script>
 
 <template>
@@ -135,6 +190,10 @@ function formatDuration(ms: number) {
           <h1 class="text-3xl font-bold flex gap-2 items-center">
             <div class="i-carbon-music text-primary-500" />
             Music Together
+            <span class="text-sm text-gray-500 font-normal ml-2 px-2 py-1 rounded-full bg-gray-200 flex gap-1 items-center dark:bg-gray-800" title="Total users online">
+              <div class="i-carbon-user-multiple" />
+              {{ Object.keys(activeUsers).length }}
+            </span>
           </h1>
           <div class="flex gap-4 items-center">
             <DarkToggle class="text-2xl text-gray-600 transition-colors dark:text-gray-300 hover:text-primary-500" />
@@ -151,10 +210,19 @@ function formatDuration(ms: number) {
             :video-id="currentVideoId"
             @ended="onVideoEnded"
           />
-          <div v-if="currentVideoId" class="px-2">
+          <div v-if="currentVideoId" class="px-2 flex items-center justify-between">
             <h2 class="text-xl font-semibold">
               {{ state.playlist.find(v => v.id === currentVideoId)?.title || 'Playing Video' }}
             </h2>
+            <div class="flex gap-2 items-center">
+              <div class="i-carbon-user text-gray-500" />
+              <input
+                v-model="userName"
+                type="text"
+                class="text-sm text-gray-600 px-1 py-0.5 border-b border-transparent bg-transparent w-32 transition-colors dark:text-gray-400 focus:outline-none focus:border-primary-500 hover:border-gray-300"
+                placeholder="Your name"
+              >
+            </div>
           </div>
         </div>
 
@@ -217,13 +285,23 @@ function formatDuration(ms: number) {
 
       <!-- Right Column: Playlist -->
       <div class="p-4 border border-gray-200 rounded-xl bg-white flex flex-col h-[calc(100vh-4rem)] shadow-sm dark:border-gray-700 dark:bg-gray-800">
-        <h2 class="text-xl font-semibold mb-4 flex gap-2 items-center">
-          <div class="i-carbon-list" />
-          Shared Playlist
-          <span class="text-sm text-gray-500 font-normal ml-auto px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700">
-            {{ state.playlist.length }} items
-          </span>
-        </h2>
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-xl font-semibold flex gap-2 items-center">
+            <div class="i-carbon-list" />
+            Shared Playlist
+            <span class="text-sm text-gray-500 font-normal ml-2 px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700">
+              {{ state.playlist.length }} items
+            </span>
+          </h2>
+          <button
+            class="p-2 rounded-lg transition-colors"
+            :class="isLooping ? 'text-primary-600 bg-primary-50 dark:bg-primary-900/30 dark:text-primary-400' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'"
+            title="Toggle Loop Playlist"
+            @click="isLooping = !isLooping"
+          >
+            <div class="i-carbon-repeat text-xl" />
+          </button>
+        </div>
 
         <div class="pr-2 flex-1 overflow-y-auto space-y-2">
           <div v-if="state.playlist.length === 0" class="text-gray-500 py-8 text-center">
@@ -244,9 +322,26 @@ function formatDuration(ms: number) {
             </div>
 
             <div class="flex-1 min-w-0 cursor-pointer" @click="playVideo(video.id)">
-              <h3 class="text-sm font-medium line-clamp-2" :class="currentVideoId === video.id ? 'text-primary-600 dark:text-primary-400' : ''">
-                {{ video.title }}
-              </h3>
+              <div class="flex gap-1 items-start">
+                <h3 class="text-sm font-medium line-clamp-2" :class="currentVideoId === video.id ? 'text-primary-600 dark:text-primary-400' : ''">
+                  {{ video.title }}
+                </h3>
+                <!-- Active Users Indicator -->
+                <div v-if="getUsersForVideo(video.id).length > 0" class="group/tooltip mt-0.5 flex-shrink-0 relative">
+                  <span class="text-xs text-white leading-none px-0.5 py-0.5 rounded-full bg-red-500 inline-flex min-w-[16px] cursor-help items-center justify-center">
+                    {{ getUsersForVideo(video.id).length > 9 ? '9+' : getUsersForVideo(video.id).length }}
+                  </span>
+                  <div class="text-xs text-white font-normal mt-1 p-2 text-left rounded bg-gray-800 min-w-max hidden shadow-lg right-0 top-full absolute z-10 dark:bg-gray-700 group-hover/tooltip:block">
+                    <span class="text-gray-300 mb-1 pb-1 border-b border-gray-600 block">
+                      Watching now:
+                    </span>
+                    <span v-for="user in getUsersForVideo(video.id)" :key="user.userName" class="py-0.5 flex gap-1 items-center">
+                      <span class="i-carbon-user text-[10px]" />
+                      {{ user.userName }}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <button

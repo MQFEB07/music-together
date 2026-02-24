@@ -31,21 +31,6 @@ export default defineEventHandler(async (event) => {
 
   state.playlist.push(video)
 
-  // If nothing is playing, start playing the new video
-  if (!state.playback.videoId) {
-    state.playback.videoId = video.id
-    state.playback.isPlaying = true
-    state.playback.currentTime = 0
-    state.playback.updatedAt = Date.now()
-
-    // Update stats
-    await Video.findOneAndUpdate(
-      { id: video.id } as any,
-      { $inc: { playCount: 1 }, $set: { lastPlayedAt: new Date() } },
-      { returnDocument: 'after', upsert: true },
-    )
-  }
-
   await state.save()
   broadcastState()
 

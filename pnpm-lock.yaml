@@ -59,6 +59,9 @@ catalogs:
     vue:
       specifier: ^3.5.27
       version: 3.5.27
+    youtube-sr:
+      specifier: ^4.3.12
+      version: 4.3.12
   icons:
     '@iconify-json/carbon':
       specifier: ^1.2.18
@@ -77,10 +80,6 @@ overrides:
 importers:
 
   .:
-    dependencies:
-      youtube-sr:
-        specifier: ^4.3.12
-        version: 4.3.12
     devDependencies:
       '@antfu/eslint-config':
         specifier: catalog:dev
@@ -145,6 +144,9 @@ importers:
       vue-tsc:
         specifier: catalog:dev
         version: 3.2.4(typescript@5.9.3)
+      youtube-sr:
+        specifier: catalog:frontend
+        version: 4.3.12
 
 packages:
 

@@ -30,6 +30,7 @@ catalogs:
     '@supabase/supabase-js': ^2.97.0
     '@vueuse/core': ^14.2.0
     pinia: ^3.0.4
+    tslib: ^2.8.1
     vue: ^3.5.27
     youtube-sr: ^4.3.12
   icons:

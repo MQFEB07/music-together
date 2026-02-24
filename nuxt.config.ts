@@ -44,6 +44,10 @@ export default defineNuxtConfig({
     },
   },
 
+  build: {
+    transpile: ['tslib'],
+  },
+
   future: {
     compatibilityVersion: 4,
   },
@@ -71,7 +75,11 @@ export default defineNuxtConfig({
     },
     preset: 'netlify',
   },
+
   vite: {
+    optimizeDeps: {
+      include: ['tslib'],
+    },
     server: {
       allowedHosts: ['devserver-main--playful-crostata-dbd6f6.netlify.app'],
     },

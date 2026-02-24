@@ -2,8 +2,16 @@
 publish = "dist"
 command = "pnpm run build"
 
+[functions]
+directory = ".netlify/functions"
+
 [build.environment]
 NODE_VERSION = "20"
+
+[[redirects]]
+from = "/api/*"
+to = "/.netlify/functions/server"
+status = 200
 
 [[redirects]]
 from = "/*"

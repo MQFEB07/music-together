@@ -16,7 +16,8 @@ export default defineEventHandler(async (event) => {
       thumbnail: v.thumbnail?.url || '',
       duration: v.duration,
     }))
-  } catch (error) {
+  }
+  catch (error) {
     console.error('Search error:', error)
     return []
   }

@@ -1,5 +1,5 @@
-import { connectDB } from '../utils/db'
 import { State, Video } from '../models'
+import { connectDB } from '../utils/db'
 import { broadcastState } from '../utils/state'
 
 export default defineEventHandler(async (event) => {
@@ -28,9 +28,9 @@ export default defineEventHandler(async (event) => {
   // If video changed, update stats
   if (videoId !== undefined && videoId !== oldVideoId) {
     await Video.findOneAndUpdate(
-      { id: videoId } as any, 
+      { id: videoId } as any,
       { $inc: { playCount: 1 }, $set: { lastPlayedAt: new Date() } },
-      { returnDocument: 'after', upsert: true }
+      { returnDocument: 'after', upsert: true },
     )
   }
 

@@ -37,6 +37,13 @@ export default defineNuxtConfig({
     classSuffix: '',
   },
 
+  runtimeConfig: {
+    public: {
+      supabaseUrl: '',
+      supabaseKey: '',
+    },
+  },
+
   future: {
     compatibilityVersion: 4,
   },

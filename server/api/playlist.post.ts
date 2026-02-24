@@ -23,6 +23,12 @@ export default defineEventHandler(async (event) => {
     state = await State.create({ roomId: 'default' })
   }
 
+  // Check if video already exists in playlist
+  const isDuplicate = state.playlist.some((v: any) => v.id === video.id)
+  if (isDuplicate) {
+    return { success: false, message: 'Video already in playlist' }
+  }
+
   state.playlist.push(video)
 
   // If nothing is playing, start playing the new video

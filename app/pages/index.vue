@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { useFetch } from '#app'
+import { useFetch, useRuntimeConfig } from '#app'
 import { onMounted, onUnmounted, ref } from 'vue'
 import YouTubePlayer from '~/components/YouTubePlayer.vue'
+import { useSupabase } from '~/utils/supabase'
 
 interface Video {
   id: string
@@ -36,19 +37,32 @@ const state = ref<AppState>({
   },
 })
 
-let eventSource: EventSource | null = null
+let channel: any = null
+let supabaseClient: any = null
 
-onMounted(() => {
-  eventSource = new EventSource('/api/events')
-  eventSource.onmessage = (event) => {
-    const data = JSON.parse(event.data)
-    state.value = data
+onMounted(async () => {
+  // Fetch initial state
+  const { data } = await useFetch<AppState>('/api/state')
+  if (data.value) {
+    state.value = data.value
+  }
+
+  // Initialize Supabase Realtime
+  supabaseClient = useSupabase()
+  if (supabaseClient) {
+    channel = supabaseClient.channel('room:default')
+
+    channel
+      .on('broadcast', { event: 'state-update' }, (payload: any) => {
+        state.value = payload.payload
+      })
+      .subscribe()
   }
 })
 
 onUnmounted(() => {
-  if (eventSource) {
-    eventSource.close()
+  if (channel && supabaseClient) {
+    supabaseClient.removeChannel(channel)
   }
 })
 
@@ -70,12 +84,18 @@ async function search() {
 }
 
 async function addToPlaylist(video: Video) {
-  await $fetch('/api/playlist', {
+  const response = await $fetch<{ success: boolean, message?: string }>('/api/playlist', {
     method: 'POST',
     body: { video },
   })
-  searchResults.value = []
-  searchQuery.value = ''
+
+  if (response && !response.success && response.message) {
+    alert(response.message)
+  }
+  else {
+    searchResults.value = []
+    searchQuery.value = ''
+  }
 }
 
 async function removeFromPlaylist(id: string) {
@@ -152,7 +172,7 @@ function formatDuration(ms: number) {
             <div class="i-carbon-music text-primary-500" />
             Music Together
           </h1>
-          <NuxtLink to="/stats" class="px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 rounded-lg transition-colors flex items-center gap-2">
+          <NuxtLink to="/stats" class="px-4 py-2 rounded-lg bg-gray-200 flex gap-2 transition-colors items-center dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700">
             <div class="i-carbon-chart-bar" />
             Stats
           </NuxtLink>
@@ -212,6 +232,15 @@ function formatDuration(ms: number) {
                 </p>
               </div>
               <button
+                v-if="state.playlist.some(v => v.id === video.id)"
+                class="text-red-500 p-2 rounded-full opacity-0 transition-all hover:bg-red-50 group-hover:opacity-100 dark:hover:bg-red-900/30"
+                title="Remove from Playlist"
+                @click="removeFromPlaylist(video.id)"
+              >
+                <div class="i-carbon-trash-can text-xl" />
+              </button>
+              <button
+                v-else
                 class="text-primary-600 p-2 rounded-full opacity-0 transition-all hover:bg-primary-50 group-hover:opacity-100 dark:hover:bg-primary-900/30"
                 title="Add to Playlist"
                 @click="addToPlaylist(video)"

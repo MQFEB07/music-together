@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events'
+import { State } from '../models'
+import { connectDB } from './db'
 
 export interface Video {
   id: string
@@ -19,18 +21,15 @@ export interface AppState {
   playback: PlaybackState
 }
 
-export const state: AppState = {
-  playlist: [],
-  playback: {
-    videoId: null,
-    isPlaying: false,
-    currentTime: 0,
-    updatedAt: Date.now(),
-  },
-}
-
 export const events = new EventEmitter()
 
-export function broadcastState() {
-  events.emit('update', state)
+export async function broadcastState() {
+  await connectDB()
+  const state = await State.findOne({ roomId: 'default' } as any)
+  if (state) {
+    events.emit('update', {
+      playlist: state.playlist,
+      playback: state.playback,
+    })
+  }
 }

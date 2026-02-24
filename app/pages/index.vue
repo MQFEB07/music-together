@@ -147,10 +147,16 @@ function formatDuration(ms: number) {
     <div class="mx-auto gap-8 grid grid-cols-1 max-w-6xl lg:grid-cols-3">
       <!-- Left Column: Player & Search -->
       <div class="space-y-6 lg:col-span-2">
-        <h1 class="text-3xl font-bold flex gap-2 items-center">
-          <div class="i-carbon-music text-primary-500" />
-          Music Together
-        </h1>
+        <div class="flex items-center justify-between">
+          <h1 class="text-3xl font-bold flex gap-2 items-center">
+            <div class="i-carbon-music text-primary-500" />
+            Music Together
+          </h1>
+          <NuxtLink to="/stats" class="px-4 py-2 bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 rounded-lg transition-colors flex items-center gap-2">
+            <div class="i-carbon-chart-bar" />
+            Stats
+          </NuxtLink>
+        </div>
 
         <!-- Player -->
         <div class="space-y-2">

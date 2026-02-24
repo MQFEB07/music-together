@@ -1,16 +1,25 @@
-import { events, state } from '../utils/state'
+import { connectDB } from '../utils/db'
+import { State } from '../models'
+import { events } from '../utils/state'
 
-export default defineEventHandler((event) => {
+export default defineEventHandler(async (event) => {
+  await connectDB()
   setHeader(event, 'Content-Type', 'text/event-stream')
   setHeader(event, 'Cache-Control', 'no-cache')
   setHeader(event, 'Connection', 'keep-alive')
 
-  const sendState = () => {
-    event.node.res.write(`data: ${JSON.stringify(state)}\n\n`)
+  const sendState = (stateData: any) => {
+    event.node.res.write(`data: ${JSON.stringify(stateData)}\n\n`)
   }
 
   // Send initial state
-  sendState()
+  const state = await State.findOne({ roomId: 'default' } as any)
+  if (state) {
+    sendState({
+      playlist: state.playlist,
+      playback: state.playback
+    })
+  }
 
   // Listen for updates
   events.on('update', sendState)

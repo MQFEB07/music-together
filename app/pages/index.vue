@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useFetch, useRuntimeConfig } from '#app'
+import { useFetch } from '#app'
 import { onMounted, onUnmounted, ref } from 'vue'
 import YouTubePlayer from '~/components/YouTubePlayer.vue'
 import { useSupabase } from '~/utils/supabase'
@@ -11,30 +11,18 @@ interface Video {
   duration: number
 }
 
-interface PlaybackState {
-  videoId: string | null
-  isPlaying: boolean
-  currentTime: number
-  updatedAt: number
-}
-
 interface AppState {
   playlist: Video[]
-  playback: PlaybackState
 }
 
 const searchQuery = ref('')
 const searchResults = ref<Video[]>([])
 const isSearching = ref(false)
 
+const currentVideoId = ref<string | null>(null)
+
 const state = ref<AppState>({
   playlist: [],
-  playback: {
-    videoId: null,
-    isPlaying: false,
-    currentTime: 0,
-    updatedAt: Date.now(),
-  },
 })
 
 let channel: any = null
@@ -105,52 +93,28 @@ async function removeFromPlaylist(id: string) {
 }
 
 async function playVideo(id: string) {
+  currentVideoId.value = id
+  // Still call the API to update play count stats
   await $fetch('/api/playback', {
     method: 'POST',
     body: {
       videoId: id,
-      isPlaying: true,
-      currentTime: 0,
-    },
-  })
-}
-
-async function updatePlayback(playbackState: { isPlaying: boolean, currentTime: number }) {
-  await $fetch('/api/playback', {
-    method: 'POST',
-    body: {
-      videoId: state.value.playback.videoId,
-      isPlaying: playbackState.isPlaying,
-      currentTime: playbackState.currentTime,
     },
   })
 }
 
 async function onVideoEnded() {
   // Play next video in playlist
-  const currentIndex = state.value.playlist.findIndex(v => v.id === state.value.playback.videoId)
+  const currentIndex = state.value.playlist.findIndex(v => v.id === currentVideoId.value)
   if (currentIndex !== -1 && currentIndex < state.value.playlist.length - 1) {
     const nextVideo = state.value.playlist[currentIndex + 1]
     if (nextVideo) {
-      await $fetch('/api/playback', {
-        method: 'POST',
-        body: {
-          videoId: nextVideo.id,
-          isPlaying: true,
-          currentTime: 0,
-        },
-      })
+      playVideo(nextVideo.id)
     }
   }
   else {
     // Stop playback
-    await $fetch('/api/playback', {
-      method: 'POST',
-      body: {
-        isPlaying: false,
-        currentTime: 0,
-      },
-    })
+    currentVideoId.value = null
   }
 }
 
@@ -184,16 +148,12 @@ function formatDuration(ms: number) {
         <!-- Player -->
         <div class="space-y-2">
           <YouTubePlayer
-            :video-id="state.playback.videoId"
-            :is-playing="state.playback.isPlaying"
-            :current-time="state.playback.currentTime"
-            :updated-at="state.playback.updatedAt"
-            @update:playback="updatePlayback"
+            :video-id="currentVideoId"
             @ended="onVideoEnded"
           />
-          <div v-if="state.playback.videoId" class="px-2">
+          <div v-if="currentVideoId" class="px-2">
             <h2 class="text-xl font-semibold">
-              {{ state.playlist.find(v => v.id === state.playback.videoId)?.title || 'Playing Video' }}
+              {{ state.playlist.find(v => v.id === currentVideoId)?.title || 'Playing Video' }}
             </h2>
           </div>
         </div>
@@ -274,18 +234,17 @@ function formatDuration(ms: number) {
             v-for="(video, index) in state.playlist"
             :key="video.id + index"
             class="group p-2 rounded-lg flex gap-3 transition-colors items-center"
-            :class="state.playback.videoId === video.id ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"
+            :class="currentVideoId === video.id ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"
           >
             <div class="flex-shrink-0 h-14 w-20 relative">
               <img :src="video.thumbnail" :alt="video.title" class="rounded h-full w-full object-cover">
-              <div v-if="state.playback.videoId === video.id" class="rounded bg-black/40 flex items-center inset-0 justify-center absolute">
-                <div v-if="state.playback.isPlaying" class="i-carbon-volume-up text-xl text-white animate-pulse" />
-                <div v-else class="i-carbon-pause text-xl text-white" />
+              <div v-if="currentVideoId === video.id" class="rounded bg-black/40 flex items-center inset-0 justify-center absolute">
+                <div class="i-carbon-volume-up text-xl text-white animate-pulse" />
               </div>
             </div>
 
             <div class="flex-1 min-w-0 cursor-pointer" @click="playVideo(video.id)">
-              <h3 class="text-sm font-medium line-clamp-2" :class="state.playback.videoId === video.id ? 'text-primary-600 dark:text-primary-400' : ''">
+              <h3 class="text-sm font-medium line-clamp-2" :class="currentVideoId === video.id ? 'text-primary-600 dark:text-primary-400' : ''">
                 {{ video.title }}
               </h3>
             </div>

@@ -10,17 +10,10 @@ export default defineEventHandler(async () => {
     state = await State.create({
       roomId: 'default',
       playlist: [],
-      playback: {
-        videoId: null,
-        isPlaying: false,
-        currentTime: 0,
-        updatedAt: Date.now(),
-      },
     })
   }
 
   return {
     playlist: state.playlist,
-    playback: state.playback,
   }
 })

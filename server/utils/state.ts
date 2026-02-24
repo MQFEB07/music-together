@@ -9,16 +9,8 @@ export interface Video {
   duration: number
 }
 
-export interface PlaybackState {
-  videoId: string | null
-  isPlaying: boolean
-  currentTime: number
-  updatedAt: number
-}
-
 export interface AppState {
   playlist: Video[]
-  playback: PlaybackState
 }
 
 // Initialize Supabase client for server-side broadcasting
@@ -33,7 +25,6 @@ export async function broadcastState() {
       event: 'state-update',
       payload: {
         playlist: state.playlist,
-        playback: state.playback,
       },
     })
   }

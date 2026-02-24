@@ -1,3 +1,8 @@
+<p align="center">
+<br>
+<a href="https://playful-crostata-dbd6f6.netlify.app/">🖥 Online Preview</a>
+</p>
+
 # 🎵 Music Together
 
 Music Together is a real-time web application that allows you and your friends to build a shared playlist and see what everyone is currently watching.

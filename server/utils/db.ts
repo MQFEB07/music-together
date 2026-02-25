@@ -26,3 +26,11 @@ export async function connectDB() {
     throw error
   }
 }
+
+export async function disconnectDB() {
+  if (isConnected) {
+    await mongoose.disconnect()
+    isConnected = false
+    console.warn('MongoDB disconnected successfully')
+  }
+}

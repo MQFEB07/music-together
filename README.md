@@ -5,6 +5,8 @@
 
 # 🎵 Music Together
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/36c0207e-6b3b-47a3-9fa8-a301270050fe/deploy-status)](https://app.netlify.com/projects/playful-crostata-dbd6f6/deploys)
+
 Music Together is a real-time web application that allows you and your friends to build a shared playlist and see what everyone is currently watching.
 
 ## ✨ Features

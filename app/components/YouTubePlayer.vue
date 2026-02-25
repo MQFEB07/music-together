@@ -79,7 +79,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="rounded-lg bg-black w-full aspect-video shadow-lg overflow-hidden">
+  <div class="bg-black w-full h-full overflow-hidden">
     <div ref="playerContainer" />
     <div v-if="!videoId" class="text-gray-500 flex h-full w-full items-center justify-center">
       No video selected

@@ -30,7 +30,7 @@ function formatDate(dateString: string) {
 </script>
 
 <template>
-  <div class="text-gray-900 p-4 bg-gray-50 min-h-screen dark:text-gray-100 md:p-8 dark:bg-gray-900">
+  <div class="p-4 md:p-8">
     <div class="mx-auto max-w-6xl space-y-8">
       <div class="flex items-center justify-between">
         <h1 class="text-3xl font-bold flex gap-2 items-center">

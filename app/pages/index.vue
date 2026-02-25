@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useCookie, useFetch } from '#app'
-import { onMounted, onUnmounted, ref, watch } from 'vue'
-import YouTubePlayer from '~/components/YouTubePlayer.vue'
+import { nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref, watch } from 'vue'
+import { usePlayerState } from '~/composables/usePlayerState'
 import { useSupabase } from '~/utils/supabase'
 
 interface Video {
@@ -15,12 +15,13 @@ interface AppState {
   playlist: Video[]
 }
 
+const { currentVideoId, playerRect, isPlayerVisible, isTransitioning, isInitialLoad, globalVideoEnded } = usePlayerState()
+
 const searchQuery = ref('')
 const searchResults = ref<Video[]>([])
 const isSearching = ref(false)
 
 const userName = useCookie<string>('music-together-username', { default: () => `Guest-${Math.floor(Math.random() * 10000)}` })
-const currentVideoId = useCookie<string | null>('music-together-current-video', { default: () => null })
 const isLooping = ref(false)
 
 const activeUsers = ref<{ [key: string]: { userName: string, videoId: string | null } }>({})
@@ -34,25 +35,72 @@ let supabaseClient: any = null
 let isSubscribed = false
 const clientId = Math.random().toString(36).substring(2, 15)
 
-const { data: initialState } = await useFetch<AppState>('/api/state')
-if (initialState.value) {
-  state.value = initialState.value
-  if (state.value && state.value.playlist && state.value.playlist.length > 0) {
-    // Only set to first video if currentVideoId is null or not in playlist
-    const exists = state.value.playlist.some(v => v.id === currentVideoId.value)
-    if (!exists) {
-      currentVideoId.value = state.value.playlist[0]!.id
+const playerPlaceholder = ref<HTMLElement | null>(null)
+let resizeObserver: ResizeObserver | null = null
+
+let isUpdatingPosition = false
+function updatePlayerPosition() {
+  if (isUpdatingPosition)
+    return
+  isUpdatingPosition = true
+
+  requestAnimationFrame(() => {
+    if (playerPlaceholder.value && isPlayerVisible.value) {
+      const rect = playerPlaceholder.value.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        playerRect.value = {
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+        }
+      }
     }
-  }
+    isUpdatingPosition = false
+  })
 }
 
-watch([userName, currentVideoId], async () => {
-  if (channel && isSubscribed) {
-    await channel.track({ userName: userName.value, videoId: currentVideoId.value })
-  }
+watch(globalVideoEnded, () => {
+  onVideoEnded()
 })
 
 onMounted(async () => {
+  isPlayerVisible.value = true
+  isTransitioning.value = false // Disable transition on initial load
+  await nextTick()
+  updatePlayerPosition()
+
+  // After initial position is set, we can allow transitions
+  setTimeout(() => {
+    isInitialLoad.value = false
+  }, 100)
+
+  window.addEventListener('resize', updatePlayerPosition)
+  window.addEventListener('scroll', updatePlayerPosition, true)
+
+  if (playerPlaceholder.value) {
+    resizeObserver = new ResizeObserver(updatePlayerPosition)
+    resizeObserver.observe(playerPlaceholder.value)
+  }
+
+  const { data: initialState } = await useFetch<AppState>('/api/state')
+  if (initialState.value) {
+    state.value = initialState.value
+    if (state.value && state.value.playlist && state.value.playlist.length > 0) {
+      // Only set to first video if currentVideoId is null or not in playlist
+      const exists = state.value.playlist.some(v => v.id === currentVideoId.value)
+      if (!exists) {
+        currentVideoId.value = state.value.playlist[0]!.id
+      }
+    }
+  }
+
+  watch([userName, currentVideoId], async () => {
+    if (channel && isSubscribed) {
+      await channel.track({ userName: userName.value, videoId: currentVideoId.value })
+    }
+  }, { immediate: true })
+
   // Initialize Supabase Realtime
   supabaseClient = useSupabase()
   if (supabaseClient) {
@@ -89,6 +137,38 @@ onUnmounted(() => {
   if (channel && supabaseClient) {
     supabaseClient.removeChannel(channel)
   }
+  window.removeEventListener('resize', updatePlayerPosition)
+  window.removeEventListener('scroll', updatePlayerPosition, true)
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+  }
+})
+
+let transitionTimeout: any = null
+
+onActivated(async () => {
+  if (!isInitialLoad.value) {
+    isTransitioning.value = true
+  }
+
+  isPlayerVisible.value = true
+  await nextTick()
+  updatePlayerPosition()
+
+  clearTimeout(transitionTimeout)
+  transitionTimeout = setTimeout(() => {
+    isTransitioning.value = false
+  }, 300)
+})
+
+onDeactivated(() => {
+  isTransitioning.value = true
+  isPlayerVisible.value = false
+
+  clearTimeout(transitionTimeout)
+  transitionTimeout = setTimeout(() => {
+    isTransitioning.value = false
+  }, 300)
 })
 
 async function search() {
@@ -182,22 +262,22 @@ function getUsersForVideo(id: string) {
 </script>
 
 <template>
-  <div class="text-gray-900 p-4 bg-gray-50 min-h-screen dark:text-gray-100 md:p-8 dark:bg-gray-900">
+  <div class="p-4 md:p-8">
     <div class="mx-auto gap-8 grid grid-cols-1 max-w-6xl lg:grid-cols-3">
       <!-- Left Column: Player & Search -->
       <div class="space-y-6 lg:col-span-2">
-        <div class="flex items-center justify-between">
-          <h1 class="text-3xl font-bold flex gap-2 items-center">
-            <div class="i-carbon-music text-primary-500" />
-            Music Together
-            <span class="text-sm text-gray-500 font-normal ml-2 px-2 py-1 rounded-full bg-gray-200 flex gap-1 items-center dark:bg-gray-800" title="Total users online">
+        <div class="flex flex-col gap-4 justify-between sm:flex-row sm:items-center">
+          <h1 class="text-2xl font-bold flex gap-2 items-center sm:text-3xl">
+            <div class="i-carbon-music text-primary-500 flex-shrink-0" />
+            <span class="truncate">Music Together</span>
+            <span class="text-sm text-gray-500 font-normal ml-2 px-2 py-1 rounded-full bg-gray-200 flex flex-shrink-0 gap-1 items-center dark:bg-gray-800" title="Total users online">
               <div class="i-carbon-user-multiple" />
               {{ Object.keys(activeUsers).length }}
             </span>
           </h1>
-          <div class="flex gap-4 items-center">
+          <div class="flex gap-4 items-center self-end sm:self-auto">
             <DarkToggle class="text-2xl text-gray-600 transition-colors dark:text-gray-300 hover:text-primary-500" />
-            <NuxtLink to="/stats" class="px-4 py-2 rounded-lg bg-gray-200 flex gap-2 transition-colors items-center dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700">
+            <NuxtLink to="/stats" class="px-4 py-2 rounded-lg bg-gray-200 flex gap-2 whitespace-nowrap transition-colors items-center dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700">
               <div class="i-carbon-chart-bar" />
               Stats
             </NuxtLink>
@@ -206,20 +286,17 @@ function getUsersForVideo(id: string) {
 
         <!-- Player -->
         <div class="space-y-2">
-          <YouTubePlayer
-            :video-id="currentVideoId"
-            @ended="onVideoEnded"
-          />
-          <div v-if="currentVideoId" class="px-2 flex items-center justify-between">
-            <h2 class="text-xl font-semibold">
+          <div ref="playerPlaceholder" class="rounded-lg bg-black/5 w-full aspect-video dark:bg-white/5" />
+          <div v-if="currentVideoId" class="px-2 flex flex-col gap-2 justify-between sm:flex-row sm:items-center">
+            <h2 class="text-lg font-semibold line-clamp-2 sm:text-xl sm:line-clamp-1">
               {{ state.playlist.find(v => v.id === currentVideoId)?.title || 'Playing Video' }}
             </h2>
-            <div class="flex gap-2 items-center">
+            <div class="flex flex-shrink-0 gap-2 items-center self-end sm:self-auto">
               <div class="i-carbon-user text-gray-500" />
               <input
                 v-model="userName"
                 type="text"
-                class="text-sm text-gray-600 px-1 py-0.5 border-b border-transparent bg-transparent w-32 transition-colors dark:text-gray-400 focus:outline-none focus:border-primary-500 hover:border-gray-300"
+                class="text-sm text-gray-600 px-1 py-0.5 border-b border-transparent bg-transparent w-24 transition-colors dark:text-gray-400 focus:outline-none focus:border-primary-500 hover:border-gray-300 sm:w-32"
                 placeholder="Your name"
               >
             </div>
@@ -228,17 +305,17 @@ function getUsersForVideo(id: string) {
 
         <!-- Search -->
         <div class="p-4 border border-gray-200 rounded-xl bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <form class="flex gap-2" @submit.prevent="search">
+          <form class="flex flex-col gap-2 sm:flex-row" @submit.prevent="search">
             <input
               v-model="searchQuery"
               type="text"
               placeholder="Search YouTube videos..."
-              class="px-4 py-2 border border-gray-300 rounded-lg bg-transparent flex-1 focus:outline-none dark:border-gray-600 focus:ring-2 focus:ring-primary-500"
+              class="px-4 py-2 border border-gray-300 rounded-lg bg-transparent flex-1 min-w-0 focus:outline-none dark:border-gray-600 focus:ring-2 focus:ring-primary-500"
             >
             <button
               type="submit"
               :disabled="isSearching"
-              class="text-white font-medium px-6 py-2 rounded-lg bg-primary-600 flex gap-2 transition-colors items-center hover:bg-primary-700 disabled:opacity-50"
+              class="text-white font-medium px-6 py-2 rounded-lg bg-primary-600 flex gap-2 whitespace-nowrap transition-colors items-center justify-center hover:bg-primary-700 disabled:opacity-50"
             >
               <div v-if="isSearching" class="i-carbon-circle-dash animate-spin" />
               <div v-else class="i-carbon-search" />
@@ -251,40 +328,42 @@ function getUsersForVideo(id: string) {
             <div
               v-for="video in searchResults"
               :key="video.id"
-              class="group p-2 rounded-lg flex gap-4 transition-colors items-center hover:bg-gray-100 dark:hover:bg-gray-700"
+              class="group p-2 rounded-lg flex gap-3 transition-colors items-center hover:bg-gray-100 sm:gap-4 dark:hover:bg-gray-700"
             >
-              <img :src="video.thumbnail" :alt="video.title" class="rounded h-16 w-24 object-cover">
+              <img :src="video.thumbnail" :alt="video.title" class="rounded flex-shrink-0 h-14 w-20 object-cover sm:h-16 sm:w-24">
               <div class="flex-1 min-w-0">
-                <h3 class="font-medium truncate" :title="video.title">
+                <h3 class="text-sm font-medium line-clamp-2 sm:text-base sm:truncate" :title="video.title">
                   {{ video.title }}
                 </h3>
-                <p class="text-sm text-gray-500 dark:text-gray-400">
+                <p class="text-xs text-gray-500 sm:text-sm dark:text-gray-400">
                   {{ formatDuration(video.duration) }}
                 </p>
               </div>
-              <button
-                v-if="state.playlist.some(v => v.id === video.id)"
-                class="text-red-500 p-2 rounded-full opacity-0 transition-all hover:bg-red-50 group-hover:opacity-100 dark:hover:bg-red-900/30"
-                title="Remove from Playlist"
-                @click="removeFromPlaylist(video.id)"
-              >
-                <div class="i-carbon-trash-can text-xl" />
-              </button>
-              <button
-                v-else
-                class="text-primary-600 p-2 rounded-full opacity-0 transition-all hover:bg-primary-50 group-hover:opacity-100 dark:hover:bg-primary-900/30"
-                title="Add to Playlist"
-                @click="addToPlaylist(video)"
-              >
-                <div class="i-carbon-add-alt text-xl" />
-              </button>
+              <div class="flex-shrink-0">
+                <button
+                  v-if="state.playlist.some(v => v.id === video.id)"
+                  class="text-red-500 p-2 rounded-full transition-all hover:bg-red-50 sm:opacity-0 dark:hover:bg-red-900/30 sm:group-hover:opacity-100"
+                  title="Remove from Playlist"
+                  @click="removeFromPlaylist(video.id)"
+                >
+                  <div class="i-carbon-trash-can text-lg sm:text-xl" />
+                </button>
+                <button
+                  v-else
+                  class="text-primary-600 p-2 rounded-full transition-all hover:bg-primary-50 sm:opacity-0 dark:hover:bg-primary-900/30 sm:group-hover:opacity-100"
+                  title="Add to Playlist"
+                  @click="addToPlaylist(video)"
+                >
+                  <div class="i-carbon-add-alt text-lg sm:text-xl" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Right Column: Playlist -->
-      <div class="p-4 border border-gray-200 rounded-xl bg-white flex flex-col h-[calc(100vh-4rem)] shadow-sm dark:border-gray-700 dark:bg-gray-800">
+      <div class="p-4 border border-gray-200 rounded-xl bg-white flex flex-col h-[500px] shadow-sm dark:border-gray-700 dark:bg-gray-800 lg:h-[calc(100vh-4rem)]">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-xl font-semibold flex gap-2 items-center">
             <div class="i-carbon-list" />
@@ -311,24 +390,24 @@ function getUsersForVideo(id: string) {
           <div
             v-for="(video, index) in state.playlist"
             :key="video.id + index"
-            class="group p-2 rounded-lg flex gap-3 transition-colors items-center"
+            class="group p-2 rounded-lg flex gap-2 transition-colors items-center sm:gap-3"
             :class="currentVideoId === video.id ? 'bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"
           >
-            <div class="flex-shrink-0 h-14 w-20 relative">
+            <div class="flex-shrink-0 h-12 w-16 relative sm:h-14 sm:w-20">
               <img :src="video.thumbnail" :alt="video.title" class="rounded h-full w-full object-cover">
               <div v-if="currentVideoId === video.id" class="rounded bg-black/40 flex items-center inset-0 justify-center absolute">
-                <div class="i-carbon-volume-up text-xl text-white animate-pulse" />
+                <div class="i-carbon-volume-up text-lg text-white animate-pulse sm:text-xl" />
               </div>
             </div>
 
             <div class="flex-1 min-w-0 cursor-pointer" @click="playVideo(video.id)">
               <div class="flex gap-1 items-start">
-                <h3 class="text-sm font-medium line-clamp-2" :class="currentVideoId === video.id ? 'text-primary-600 dark:text-primary-400' : ''">
+                <h3 class="text-xs font-medium line-clamp-2 sm:text-sm" :class="currentVideoId === video.id ? 'text-primary-600 dark:text-primary-400' : ''">
                   {{ video.title }}
                 </h3>
                 <!-- Active Users Indicator -->
                 <div v-if="getUsersForVideo(video.id).length > 0" class="group/tooltip mt-0.5 flex-shrink-0 relative">
-                  <span class="text-xs text-white leading-none px-0.5 py-0.5 rounded-full bg-red-500 inline-flex min-w-[16px] cursor-help items-center justify-center">
+                  <span class="text-[10px] text-white leading-none px-0.5 py-0.5 rounded-full bg-red-500 inline-flex min-w-[14px] cursor-help items-center justify-center sm:text-xs sm:min-w-[16px]">
                     {{ getUsersForVideo(video.id).length > 9 ? '9+' : getUsersForVideo(video.id).length }}
                   </span>
                   <div class="text-xs text-white font-normal mt-1 p-2 text-left rounded bg-gray-800 min-w-max hidden shadow-lg right-0 top-full absolute z-10 dark:bg-gray-700 group-hover/tooltip:block">
@@ -344,21 +423,23 @@ function getUsersForVideo(id: string) {
               </div>
             </div>
 
-            <button
-              class="text-primary-600 p-1.5 rounded-full opacity-0 transition-all hover:bg-primary-50 group-hover:opacity-100 dark:hover:bg-primary-900/30"
-              title="Play Video"
-              @click="playVideo(video.id)"
-            >
-              <div class="i-carbon-play-filled-alt" />
-            </button>
+            <div class="flex flex-shrink-0 flex-col gap-1 sm:flex-row sm:gap-0">
+              <button
+                class="text-primary-600 p-1.5 rounded-full transition-all hover:bg-primary-50 sm:opacity-0 dark:hover:bg-primary-900/30 sm:group-hover:opacity-100"
+                title="Play Video"
+                @click="playVideo(video.id)"
+              >
+                <div class="i-carbon-play-filled-alt text-sm sm:text-base" />
+              </button>
 
-            <button
-              class="text-red-500 p-1.5 rounded-full opacity-0 transition-all hover:bg-red-50 group-hover:opacity-100 dark:hover:bg-red-900/30"
-              title="Remove from Playlist"
-              @click="removeFromPlaylist(video.id)"
-            >
-              <div class="i-carbon-trash-can" />
-            </button>
+              <button
+                class="text-red-500 p-1.5 rounded-full transition-all hover:bg-red-50 sm:opacity-0 dark:hover:bg-red-900/30 sm:group-hover:opacity-100"
+                title="Remove from Playlist"
+                @click="removeFromPlaylist(video.id)"
+              >
+                <div class="i-carbon-trash-can text-sm sm:text-base" />
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
-import { ref } from 'vue'
 import { useCookie } from '#app'
+import { ref } from 'vue'
 
 export const playerRect = ref<{
   top: number
@@ -16,7 +16,7 @@ export const miniPlayerPosition = ref<{ x: number, y: number } | null>(null)
 
 export function usePlayerState() {
   const currentVideoId = useCookie<string | null>('music-together-current-video', { default: () => null })
-  
+
   function triggerVideoEnded() {
     globalVideoEnded.value++
   }
@@ -29,6 +29,6 @@ export function usePlayerState() {
     isInitialLoad,
     miniPlayerPosition,
     globalVideoEnded,
-    triggerVideoEnded
+    triggerVideoEnded,
   }
 }

@@ -89,10 +89,6 @@ overrides:
 importers:
 
   .:
-    dependencies:
-      tslib:
-        specifier: catalog:frontend
-        version: 2.8.1
     devDependencies:
       '@antfu/eslint-config':
         specifier: catalog:dev
@@ -151,6 +147,9 @@ importers:
       pinia:
         specifier: catalog:frontend
         version: 3.0.4(typescript@5.9.3)(vue@3.5.27(typescript@5.9.3))
+      tslib:
+        specifier: catalog:frontend
+        version: 2.8.1
       typescript:
         specifier: catalog:dev
         version: 5.9.3
